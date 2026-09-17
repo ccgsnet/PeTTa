@@ -1,6 +1,7 @@
 #!/bin/sh
 
 swipl -q -s tests/test_parser_swrite.pl -g run_tests -t halt || exit 1
+swipl -q -s tests/test_das.pl -g run_tests -t halt || exit 1
 
 run_test() {
     f="$1"
@@ -29,7 +30,7 @@ pidfile="/tmp/metta_pid_map.$$"
 
 for f in ./examples/*.metta; do
     base=$(basename "$f")
-    case "$base" in repl.metta|llm_cities.metta|torch.metta|greedy_chess.metta|git_import2.metta)
+    case "$base" in repl.metta|llm_cities.metta|torch.metta|greedy_chess.metta|git_import2.metta|das_query.metta)
         continue ;;
     esac
     run_test "$f" &

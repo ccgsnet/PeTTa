@@ -19,8 +19,8 @@ library(X, Y, Path) :- library_path(Base), atom_concat(_, X, Base), atomic_list_
 :- use_module(library(process)).
 :- use_module(library(filesex)).
 :- current_prolog_flag(argv, Argv),
-  ( member(mork, Argv) -> ensure_loaded([ext_points, parser, translator, specializer, filereader, '../mork_ffi/morkspaces', spaces])
-                        ; ensure_loaded([ext_points, parser, translator, specializer, filereader, spaces])).
+  ( member(mork, Argv) -> ensure_loaded([ext_points, parser, translator, specializer, filereader, '../mork_ffi/morkspaces', spaces, das])
+                        ; ensure_loaded([ext_points, parser, translator, specializer, filereader, spaces, das])).
 
 %%%%%%%%%% Standard Library for MeTTa %%%%%%%%%%
 
@@ -341,4 +341,8 @@ register_fun(N) :- assertz(fun(N)),
                           'acos-math', 'atan-math', 'isnan-math', 'isinf-math', 'min-atom', 'max-atom',
                           'foldl-atom', 'map-atom', 'filter-atom','current-time','format-time', library, exists_file,
                           import_prolog_function, 'Predicate', callPredicate, assertaPredicate, assertzPredicate, retractPredicate,
-                          'add-translator-rule!', 'remove-translator-rule!', argv]).
+                          'add-translator-rule!', 'remove-translator-rule!', argv,
+                          'das-get', 'das-set', 'das-query', 'das-evolution',
+                          'das-query-start', 'das-evolution-start',
+                          'das-collect', 'das-status', 'das-cancel']).
+:- das_register_ops.
