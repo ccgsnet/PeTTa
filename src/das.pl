@@ -23,6 +23,14 @@ das_known_param_key(positive_importance_flag).
 das_known_param_key(disregard_importance_flag).
 das_known_param_key(unique_value_flag).
 das_known_param_key(count_flag).
+das_known_param_key(population_size).
+das_known_param_key(max_generations).
+das_known_param_key(elitism_rate).
+das_known_param_key(selection_rate).
+
+%% Client-side scorer for fitness tag remote_fitness_function.
+%% das_remote_fitness(+AnswerJson, -Float). Assert or define a clause to handle eval_fitness.
+:- multifile das_remote_fitness/2.
 
 %%%%%%%%%% Defaults (MeTTa-friendly) %%%%%%%%%%
 
@@ -86,6 +94,100 @@ das_build_params(CommandKey, PatternOrForm, Params) :-
         Query = json{syntax: "metta", tokens: [Text]},
         put_dict(CommandKey, Base, Query, Params).
 
+%% Evolution POST body matches CommandRouter HTTP (sentence_evolution.cc):
+%%   params.evolution = { query, fitness_function_tag, correlation_* }
+%%   plus scalar router params (context, population_size, ...).
+%% MeTTa form is a list of labeled clauses:
+%%   (query <expr>|"(Contains $sentence1 ...)")
+%%   (ff <tag>)
+%%   (cq (<expr> ...))
+%%   (cr (((from to) ...)))
+%%   (cm (((from to) ...)))
+%% String expressions keep $names; structured terms are printed with swrite.
+das_build_evolution_params(Form, Params) :-
+        (   is_list(Form)
+        ->  true
+        ;   throw(error(das_bad_evolution('evolution form must be a list of labeled clauses'), _))
+        ),
+        das_evolution_object(Form, Evo),
+        findall(K-V, (das_param(K, V), das_known_param_key(K)), Pairs),
+        dict_create(Base, json, Pairs),
+        put_dict(evolution, Base, Evo, Params0),
+        % Query objects use syntax "metta"; the flag must agree or DAS rejects the POST.
+        put_dict(use_metta_as_query_tokens, Params0, true, Params).
+
+das_evolution_object(Clauses, Evo) :-
+        das_evolution_query_text(Clauses, QueryText),
+        das_evolution_fitness_tag(Clauses, Tag),
+        Evo0 = json{query: json{syntax: "metta", tokens: [QueryText]},
+                    fitness_function_tag: Tag},
+        das_evolution_optional(Clauses, cq, correlation_queries, das_cq_json, Evo0, Evo1),
+        das_evolution_optional(Clauses, cr, correlation_replacements, das_pair_groups_json, Evo1, Evo2),
+        das_evolution_optional(Clauses, cm, correlation_mappings, das_pair_groups_json, Evo2, Evo).
+
+das_evolution_optional(Clauses, Label, Key, Builder, In, Out) :-
+        (   das_evolution_clause(Clauses, Label, Body)
+        ->  call(Builder, Body, Json),
+            put_dict(Key, In, Json, Out)
+        ;   Out = In
+        ).
+
+das_evolution_query_text(Clauses, Text) :-
+        (   das_evolution_clause(Clauses, query, Expr)
+        ->  das_metta_text(Expr, Text)
+        ;   throw(error(das_bad_evolution('evolution form requires (query <expr>) or (q <expr>)'), _))
+        ).
+
+das_evolution_fitness_tag(Clauses, Tag) :-
+        (   das_evolution_clause(Clauses, ff, Tag0)
+        ->  das_key_atom(Tag0, Tag),
+            (   atom_chars(Tag, Cs), member(C, Cs), memberchk(C, [' ', '\t', '\n', '\r', '(', ')', '"'])
+            ->  throw(error(das_bad_evolution('fitness tag must not contain whitespace, parentheses, or quotes'), _))
+            ;   true
+            )
+        ;   throw(error(das_bad_evolution('evolution form requires (ff <tag>)'), _))
+        ).
+
+das_evolution_clause(Clauses, Kind, Body) :-
+        member(Clause, Clauses),
+        Clause = [Label, Body],
+        das_evolution_label(Label, Kind),
+        !.
+
+das_evolution_label(Label0, Kind) :-
+        das_key_atom(Label0, Label),
+        (   (Label == query ; Label == q) -> Kind = query
+        ;   (Label == ff ; Label == fitness_function_tag ; Label == 'fitness-function-tag') -> Kind = ff
+        ;   (Label == cq ; Label == correlation_queries ; Label == 'correlation-queries') -> Kind = cq
+        ;   (Label == cr ; Label == correlation_replacements ; Label == 'correlation-replacements') -> Kind = cr
+        ;   (Label == cm ; Label == correlation_mappings ; Label == 'correlation-mappings') -> Kind = cm
+        ).
+
+das_metta_text(S, S) :- string(S), !.
+das_metta_text(A, S) :- atom(A), !, atom_string(A, S).
+das_metta_text(Term, Text) :- das_to_command_text(Term, Text).
+
+das_cq_json(Exprs, Json) :-
+        must_be(list, Exprs),
+        maplist(das_metta_token_object, Exprs, Json).
+
+das_metta_token_object(Expr, json{syntax: "metta", tokens: [Text]}) :-
+        das_metta_text(Expr, Text).
+
+das_pair_groups_json(Groups, Json) :-
+        must_be(list, Groups),
+        maplist(das_pair_group_json, Groups, Json).
+
+das_pair_group_json(Pairs, JsonPairs) :-
+        must_be(list, Pairs),
+        maplist(das_pair_json, Pairs, JsonPairs).
+
+das_pair_json([A, B], [AS, BS]) :- !,
+        das_metta_text(A, AS),
+        das_metta_text(B, BS).
+das_pair_json(Other, _) :-
+        throw(error(das_bad_evolution('correlation pair must be (from to)'), Other)).
+
 %%%%%%%%%% Multivalued query / evolution %%%%%%%%%%
 
 'das-query'(Pattern, Out) :-
@@ -95,7 +197,7 @@ das_build_params(CommandKey, PatternOrForm, Params) :-
         das_answer_to_atom(Raw, Out).
 
 'das-evolution'(Form, Out) :-
-        das_build_params(evolution, Form, Params),
+        das_build_evolution_params(Form, Params),
         das_execute_and_collect(evolution, Params, Answers),
         member(Raw, Answers),
         das_answer_to_atom(Raw, Out).
@@ -106,7 +208,7 @@ das_build_params(CommandKey, PatternOrForm, Params) :-
         Out = Id.
 
 'das-evolution-start'(Form, Out) :-
-        das_build_params(evolution, Form, Params),
+        das_build_evolution_params(Form, Params),
         das_start_async(evolution, Params, Id),
         Out = Id.
 

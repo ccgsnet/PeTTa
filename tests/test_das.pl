@@ -145,10 +145,10 @@ mock_executions(Request) :-
         assertz(mock_last_post(Body)),
         (   get_dict(command, Body, Cmd0),
             ( atom(Cmd0) -> Cmd = Cmd0 ; atom_string(Cmd, Cmd0) ),
-            Cmd == query
+            (Cmd == query ; Cmd == evolution)
         ->  reply_json_dict(json{execution_id: "exec-abc", status: "pending"},
                             [status(202)])
-        ;   reply_json_dict(json{error: "Invalid command. Allowed values: query"},
+        ;   reply_json_dict(json{error: "Invalid command. Allowed values: query, evolution"},
                             [status(400)])
         ).
 
@@ -253,11 +253,44 @@ test(http_start_async_returns_id, [setup(das_reset_params)]) :-
             Cmd == query
         )).
 
-test(http_start_rejects_evolution) :-
+test(evolution_body_matches_sentence_shape, [setup(das_reset_params)]) :-
+        once('das-set'([population_size, 50], _)),
+        once('das-set'([context, 'my-ctx'], _)),
+        Form = [[query, "(Contains $sentence1 (Word \"bbb\"))"],
+                [ff, count_letter],
+                [cq, ["(Contains $placeholder1 $word1)"]],
+                [cr, [[[placeholder1, sentence1]]]],
+                [cm, [[[sentence1, word1]]]]],
+        once(das_build_evolution_params(Form, Params)),
+        once(get_dict(evolution, Params, Evo)),
+        once(get_dict(fitness_function_tag, Evo, Tag)),
+        Tag == count_letter,
+        once(get_dict(query, Evo, Query)),
+        once(get_dict(tokens, Query, ["(Contains $sentence1 (Word \"bbb\"))"])),
+        once(get_dict(correlation_queries, Evo, [CQ])),
+        once(get_dict(tokens, CQ, ["(Contains $placeholder1 $word1)"])),
+        once(get_dict(correlation_replacements, Evo, [[["placeholder1", "sentence1"]]])),
+        once(get_dict(correlation_mappings, Evo, [[["sentence1", "word1"]]])),
+        once(get_dict(population_size, Params, 50)),
+        once(get_dict(context, Params, 'my-ctx')),
+        once(get_dict(use_metta_as_query_tokens, Params, true)).
+
+test(http_evolution_post, [setup(das_reset_params)]) :-
+        Form = [[query, "(Contains $sentence1 (Word \"bbb\"))"],
+                [ff, count_letter]],
         with_mock_server((
-            catch(das_start_async(evolution, json{}, _),
-                  error(das_http(400, _), _),
-                  true)
+            once(das_build_evolution_params(Form, Params)),
+            once(das_start_async(evolution, Params, Id)),
+            once(( Id == 'exec-abc' ; Id == "exec-abc" )),
+            once(mock_last_post(Body)),
+            once(get_dict(command, Body, Cmd0)),
+            once(( atom(Cmd0) -> Cmd = Cmd0 ; atom_string(Cmd, Cmd0) )),
+            Cmd == evolution,
+            once(get_dict(params, Body, P)),
+            once(get_dict(evolution, P, Evo)),
+            once(get_dict(fitness_function_tag, Evo, Tag0)),
+            once(( atom(Tag0) -> Tag = Tag0 ; atom_string(Tag, Tag0) )),
+            Tag == count_letter
         )).
 
 test(http_status_poll) :-
