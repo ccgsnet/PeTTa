@@ -10,6 +10,7 @@
 :- use_module(library(error)).
 
 :- dynamic das_config_cache/1.
+:- discontiguous das_ws_handle_command/7.
 
 %%%%%%%%%% Configuration %%%%%%%%%%
 
@@ -228,7 +229,7 @@ das_ws_fold(WS, Acc, Answers) :-
             ->  throw(error(das_ws_ended_without_terminal, _))
             ;   Opcode == text,
                 get_dict(data, Message, Event)
-            ->  das_ws_handle_event(Event, Acc, Acc1, Done, Outcome),
+            ->  das_ws_handle_event(WS, Event, Acc, Acc1, Done, Outcome),
                 (   Done == true
                 ->  (   Outcome = ok
                     ->  Answers = Acc1
@@ -247,19 +248,49 @@ das_ws_fold(WS, Acc, Answers) :-
         ;   das_ws_fold(WS, Acc, Answers)
         ).
 
-%% Handle one WS event dict. Acc accumulates answer JSON elements (newest first).
+%% Handle one WS event dict. Acc accumulates answer JSON elements.
+%% Tests call the 5-arg form (no socket). eval_fitness needs the live socket.
 das_ws_handle_event(Event, Acc, Acc1, Done, Outcome) :-
+        das_ws_handle_event(none, Event, Acc, Acc1, Done, Outcome).
+
+das_ws_handle_event(WS, Event, Acc, Acc1, Done, Outcome) :-
         (   is_dict(Event),
             get_dict(command, Event, Cmd0)
         ->  das_json_atom(Cmd0, Cmd),
-            das_ws_handle_command(Cmd, Event, Acc, Acc1, Done, Outcome)
+            das_ws_handle_command(Cmd, WS, Event, Acc, Acc1, Done, Outcome)
         ;   Acc1 = Acc, Done = false, Outcome = ok
         ).
 
-das_ws_handle_command(query_answers, Event, Acc, Acc1, false, ok) :- !,
+%% Remote fitness: DAS sends eval_fitness; the client must answer on the same socket
+%% before evolution continues (see sentence_evolution.cc).
+das_ws_handle_command(eval_fitness, WS, Event, Acc, Acc, false, ok) :- !,
+        (   WS == none
+        ->  throw(error(das_remote_fitness('eval_fitness requires a live WebSocket'), _))
+        ;   das_send_fitness_response(WS, Event)
+        ).
+
+das_send_fitness_response(WS, Event) :-
+        (   get_dict(params, Event, Params), is_dict(Params) -> true
+        ;   throw(error(das_remote_fitness('eval_fitness missing params'), _))
+        ),
+        (   get_dict(execution_id, Params, Id0) -> das_json_atom(Id0, ExecId) ; ExecId = '' ),
+        (   get_dict(seq, Params, Seq) -> true ; Seq = 0 ),
+        (   get_dict(answers, Params, Answers), is_list(Answers) -> true ; Answers = [] ),
+        maplist(das_score_answer, Answers, Fitness),
+        Response = json{command: "eval_fitness_response",
+                        params: json{execution_id: ExecId, seq: Seq, fitness: Fitness}},
+        ws_send(WS, json(Response)).
+
+das_score_answer(Answer, Float) :-
+        (   das_remote_fitness(Answer, Float), number(Float)
+        ->  true
+        ;   throw(error(das_remote_fitness('define das_remote_fitness/2 for remote_fitness_function'), _))
+        ).
+
+das_ws_handle_command(query_answers, _WS, Event, Acc, Acc1, false, ok) :- !,
         das_ws_extract_answers(Event, Items),
         append(Acc, Items, Acc1).
-das_ws_handle_command(execution_status, Event, Acc, Acc, Done, Outcome) :- !,
+das_ws_handle_command(execution_status, _WS, Event, Acc, Acc, Done, Outcome) :- !,
         das_ws_status(Event, Status0, Msg),
         das_json_atom(Status0, Status),
         (   Status == completed
@@ -273,7 +304,7 @@ das_ws_handle_command(execution_status, Event, Acc, Acc, Done, Outcome) :- !,
         ->  Done = true, Outcome = aborted
         ;   Done = false, Outcome = ok
         ).
-das_ws_handle_command(_, _Event, Acc, Acc, false, ok).
+das_ws_handle_command(_, _WS, _Event, Acc, Acc, false, ok).
 
 %% Normalize JSON string/atom keys to atoms for == comparisons.
 das_json_atom(V, A) :-
