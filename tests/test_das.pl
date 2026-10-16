@@ -146,7 +146,7 @@ mock_executions(Request) :-
         assertz(mock_last_post(Body)),
         (   get_dict(command, Body, Cmd0),
             ( atom(Cmd0) -> Cmd = Cmd0 ; atom_string(Cmd, Cmd0) ),
-            (Cmd == query ; Cmd == evolution)
+            (Cmd == query ; Cmd == evolution ; Cmd == add_atom ; Cmd == delete_atom)
         ->  reply_json_dict(json{execution_id: "exec-abc", status: "pending"},
                             [status(202)])
         ;   reply_json_dict(json{error: "Invalid command. Allowed values: query, evolution"},
@@ -370,18 +370,63 @@ test(match_das_space_unifies_template, [
                 Rs),
         Rs = [['MyResult', "human", "ent"]].
 
-test(das_space_rejects_writes_and_dump, [
+test(das_space_rejects_dump, [
         setup(das_bind_space('&das', 'localhost:40009')),
         cleanup(retractall(das_space('&das', _)))
      ]) :-
-        'add-atom'('&das', [foo, a], R1),
-        R1 = ['Error', "DAS space &das is read-only"],
-        'remove-atom'('&das', [foo, a], R2),
-        R2 = ['Error', "DAS space &das is read-only"],
         catch('get-atoms'('&das', _), E3, true),
         E3 = error(das_space_no_dump('&das'), _),
         catch(match('&das', Var, Var, _), E4, true),
         E4 = error(das_space_no_dump('&das'), _).
+
+test(das_space_add_and_remove_atom, [
+        cleanup(retractall(das_space('&das', _)))
+     ]) :-
+        retractall(mock_ws_answers(_)),
+        assertz(mock_ws_answers(["h-similarity"])),
+        with_mock_server((
+            das_config(Cfg),
+            get_dict(base_url, Cfg, Url),
+            das_bind_space('&das', Url),
+            'add-atom'('&das', ['Similarity', "human", "monkey"], Added),
+            Added == true,
+            once(mock_last_post(AddBody)),
+            das_posted_command(AddBody, add_atom),
+            das_posted_metta(AddBody, add_atom, AddMetta),
+            once(sub_string(AddMetta, _, _, _, "Similarity")),
+            once(sub_string(AddMetta, _, _, _, "human"))
+        )),
+        retractall(mock_ws_answers(_)),
+        assertz(mock_ws_answers(["deleted"])),
+        with_mock_server((
+            das_config(Cfg2),
+            get_dict(base_url, Cfg2, Url2),
+            das_bind_space('&das', Url2),
+            'remove-atom'('&das', ['Similarity', "human", "monkey"], Removed),
+            Removed == true,
+            once(mock_last_post(DelBody)),
+            das_posted_command(DelBody, delete_atom)
+        )),
+        retractall(mock_ws_answers(_)),
+        assertz(mock_ws_answers(["not_found"])),
+        with_mock_server((
+            das_config(Cfg3),
+            get_dict(base_url, Cfg3, Url3),
+            das_bind_space('&das', Url3),
+            'remove-atom'('&das', ['Similarity', "human", "monkey"], Missing),
+            Missing == false
+        )).
+
+das_posted_command(Body, Expected) :-
+        get_dict(command, Body, Cmd0),
+        ( atom(Cmd0) -> Cmd = Cmd0 ; atom_string(Cmd, Cmd0) ),
+        Cmd == Expected.
+
+das_posted_metta(Body, Command, Metta) :-
+        get_dict(params, Body, Params),
+        get_dict(Command, Params, Spec),
+        get_dict(metta, Spec, Metta0),
+        ( string(Metta0) -> Metta = Metta0 ; atom_string(Metta, Metta0) ).
 
 test(unbound_self_match_uses_local_facts, [
         cleanup(( functor(H, '&self', 3), retractall(H) ))
