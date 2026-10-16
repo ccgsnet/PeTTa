@@ -7,6 +7,6 @@
 
 !(das-get params)
 
-!(das-query (Similarity $V1 $V2))
-
-!(das-query (Evaluation $P (Concept "edb dce eeb bac eed")))
+!(bind! &das (new-das! (localhost:40009)))
+!(match &das (Similarity $V1 $V2) (Similarity $V1 $V2))
+!(match &das (Evaluation $P (Concept "edb dce eeb bac eed")) (Evaluation $P (Concept "edb dce eeb bac eed")))

@@ -53,6 +53,21 @@ das_set_config(Config) :-
 das_clear_config :-
         retractall(das_config_cache(_)).
 
+%% Run Goal against BaseUrl, then restore the previous client config.
+das_with_url(Url, Goal) :-
+        das_config(Prev),
+        das_normalize_url(Url, Base),
+        setup_call_cleanup(
+            das_set_config(das_config{
+                               base_url: Base,
+                               connect_timeout_ms: Prev.connect_timeout_ms,
+                               request_timeout_ms: Prev.request_timeout_ms,
+                               collect_timeout_ms: Prev.collect_timeout_ms
+                           }),
+            Goal,
+            das_set_config(Prev)
+        ).
+
 das_normalize_url(Url0, Url) :-
         atom_string(Url0, S0),
         (   sub_string(S0, _, 1, 0, "/")
