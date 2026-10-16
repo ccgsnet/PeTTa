@@ -3,6 +3,7 @@
 :- ensure_loaded('../src/parser.pl').
 :- ensure_loaded('../src/das_client.pl').
 :- ensure_loaded('../src/das.pl').
+:- ensure_loaded('../src/typecheck/decl_store.pl').
 :- ensure_loaded('../src/spaces.pl').
 
 :- use_module(library(http/thread_httpd)).
