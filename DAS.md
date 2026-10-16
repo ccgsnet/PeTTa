@@ -75,7 +75,7 @@ becomes `http://host:port`.
 ```
 
 The Command Router has no add or delete command, so `add-atom` and `remove-atom`
-on a DAS space throw `das_space_readonly`. `get-atoms` and a variable pattern
+on a DAS space return `(Error "DAS space &das is read-only")`. `get-atoms` and a variable pattern
 such as `(match &das $x $x)` throw `das_space_no_dump` because DAS has no
 full-space dump. `populate_metta_mapping` must stay true; handle-only answers
 do not unify with the pattern and are skipped. Comma-conjunction patterns are

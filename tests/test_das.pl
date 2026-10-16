@@ -374,10 +374,10 @@ test(das_space_rejects_writes_and_dump, [
         setup(das_bind_space('&das', 'localhost:40009')),
         cleanup(retractall(das_space('&das', _)))
      ]) :-
-        catch('add-atom'('&das', [foo, a], _), E1, true),
-        E1 = error(das_space_readonly('&das'), _),
-        catch('remove-atom'('&das', [foo, a], _), E2, true),
-        E2 = error(das_space_readonly('&das'), _),
+        'add-atom'('&das', [foo, a], R1),
+        R1 = ['Error', "DAS space &das is read-only"],
+        'remove-atom'('&das', [foo, a], R2),
+        R2 = ['Error', "DAS space &das is read-only"],
         catch('get-atoms'('&das', _), E3, true),
         E3 = error(das_space_no_dump('&das'), _),
         catch(match('&das', Var, Var, _), E4, true),
