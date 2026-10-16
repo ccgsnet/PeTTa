@@ -20,10 +20,10 @@ remove_sexp(Space, TermIn) :-
         retractall(Term)
     ).
 
-% A DAS space has no HTTP write command.
-'add-atom'(Space, _, ['Error', Msg]) :-
-        petta_das_space(Space, _), !,
-        format(string(Msg), "DAS space ~w is read-only", [Space]).
+% A DAS space writes through the Command Router add_atom command.
+'add-atom'(Space, Term, Result) :-
+        petta_das_space(Space, Url), !,
+        das_space_add_atom(Url, Term, Result).
 
 %Add a function atom. On failure or exception it rolls back its staged raw
 %atom, registration, metadata and compiled-dependency state; concurrent
@@ -151,9 +151,9 @@ restore_runtime_compiled_clauses(
 runtime_source_key([Eq, [F|Args], _], F/N) :-
     Eq == (=), atom(F), is_list(Args), length(Args, N).
 
-'remove-atom'(Space, _, ['Error', Msg]) :-
-        petta_das_space(Space, _), !,
-        format(string(Msg), "DAS space ~w is read-only", [Space]).
+'remove-atom'(Space, Term, Removed) :-
+        petta_das_space(Space, Url), !,
+        das_space_remove_atom(Url, Term, Removed).
 
 %%Remove a function atom:
 'remove-atom'(Space, Term, Removed) :- Term = [=,[F|Args],Body], !,

@@ -13,7 +13,7 @@ Point the client with environment variables (defaults shown):
 
 PeTTa speaks the **current** HTTP envelope `{ "command", "params" }` and WebSocket
 events `{ "command": "query_answers"|"execution_status", "params": ... }`.
-HTTP allows `command: "query"` and `command: "evolution"`.
+HTTP allows `command: "query"`, `command: "evolution"`, `command: "add_atom"`, and `command: "delete_atom"`.
 
 `das-set` / `das-get` keep a **local** parameter map that is merged into each
 query POST (router-side HTTP get/set are not available on the current API).
@@ -74,8 +74,10 @@ becomes `http://host:port`.
 !(match &das (Similarity "human" $1) (MyResult "human" $1))
 ```
 
-The Command Router has no add or delete command, so `add-atom` and `remove-atom`
-on a DAS space return `(Error "DAS space &das is read-only")`. `get-atoms` and a variable pattern
+`add-atom` and `remove-atom` on a DAS space send `add_atom` and `delete_atom`.
+The expression is posted as `params.<command>.metta`. `add-atom` returns `true`
+when DAS replies with a handle. `remove-atom` returns `true` for `deleted` and
+`false` for `not_found`. `get-atoms` and a variable pattern
 such as `(match &das $x $x)` throw `das_space_no_dump` because DAS has no
 full-space dump. `populate_metta_mapping` must stay true; handle-only answers
 do not unify with the pattern and are skipped. Comma-conjunction patterns are

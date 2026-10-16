@@ -86,6 +86,39 @@ das_space_match(Url, Pattern, OutPattern, Result) :-
         \+ cyclic_term(OutPattern),
         Result = OutPattern.
 
+%% POST add_atom / delete_atom. The router answers on the query_answers stream
+%% with the new handle, or "deleted" / "not_found".
+das_space_add_atom(Url, Term, true) :-
+        das_atom_mutation(Url, add_atom, Term, Result),
+        das_mutation_result_ok(Result).
+
+das_space_remove_atom(Url, Term, Removed) :-
+        das_atom_mutation(Url, delete_atom, Term, Result),
+        das_delete_result(Result, Removed).
+
+das_atom_mutation(Url, Command, Term, Result) :-
+        das_to_command_text(Term, Text),
+        put_dict(Command, json{}, json{metta: Text}, Params),
+        das_with_url(Url, das_execute_and_collect(Command, Params, Answers)),
+        (   Answers = [Result|_]
+        ->  true
+        ;   throw(error(das_atom_result_missing(Command), _))
+        ).
+
+das_mutation_result_ok(Result) :-
+        (   string(Result) -> Result \== ""
+        ;   atom(Result) -> Result \== ''
+        ;   throw(error(das_atom_result_missing(add_atom), _))
+        ).
+
+das_delete_result(Result, Removed) :-
+        das_json_atom(Result, Atom),
+        (   Atom == deleted -> Removed = true
+        ;   Atom == not_found -> Removed = false
+        ;   format(string(Msg), "unexpected DAS delete result: ~w", [Result]),
+            Removed = ['Error', Msg]
+        ).
+
 %%%%%%%%%% Local param store %%%%%%%%%%
 
 'das-set'(Command, Out) :-
