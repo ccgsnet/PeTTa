@@ -29,6 +29,48 @@ test(metta_expression_field_is_parsed) :-
         once(das_answer_to_atom(Dict, Atom)),
         Atom = ['Similarity', 'A', 'B'].
 
+test(das_comma_pattern_matches_as_and, [
+        setup((
+            retractall(das_query_override(_, _)),
+            assertz(das_query_override(_, [
+                and,
+                ['Similarity', "human", "chimp"],
+                ['Inheritance', "chimp", "mammal"]
+            ])),
+            das_bind_space('&das', 'localhost:40009')
+        )),
+        cleanup((
+            retractall(das_query_override(_, _)),
+            retractall(das_space('&das', _))
+        ))
+     ]) :-
+        match('&das',
+              [',', ['Similarity', "human", X], ['Inheritance', X, "mammal"]],
+              ['Result', X],
+              R),
+        R == ['Result', "chimp"].
+
+test(or_answer_unifies_matching_branch) :-
+        Similarity = [or, ['Similarity', "human", X], ['Inheritance', X, "mammal"]],
+        once(das_unify_query_answer(Similarity, ['Similarity', "human", "chimp"])),
+        X == "chimp",
+        Inheritance = [or, ['Similarity', "human", Y], ['Inheritance', Y, "mammal"]],
+        once(das_unify_query_answer(Inheritance, ['Inheritance', "monkey", "mammal"])),
+        Y == "monkey",
+        \+ das_unify_query_answer(
+               [or, ['Similarity', "human", _A], ['Inheritance', _B, "mammal"]],
+               ['Similarity', "cat", "dog"]).
+
+test(and_group_rebuilds_conjunction) :-
+        Dict = json{metta_expressions: [[
+                     "(Similarity \"human\" \"chimp\")",
+                     "(Inheritance \"chimp\" \"mammal\")"
+                 ]]},
+        once(das_answer_to_atom(Dict, Atom)),
+        Pattern = [and, ['Similarity', "human", X], ['Inheritance', X, "mammal"]],
+        Atom = Pattern,
+        X == "chimp".
+
 test(metta_expressions_array_is_parsed) :-
         Dict = json{
                    handles: [["h1"]],

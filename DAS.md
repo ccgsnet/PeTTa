@@ -80,8 +80,8 @@ when DAS replies with a handle. `remove-atom` returns `true` for `deleted` and
 `false` for `not_found`. `get-atoms` and a variable pattern
 such as `(match &das $x $x)` throw `das_space_no_dump` because DAS has no
 full-space dump. `populate_metta_mapping` must stay true; handle-only answers
-do not unify with the pattern and are skipped. Comma-conjunction patterns are
-not sent to DAS.
+do not unify with the pattern and are skipped. A comma pattern such as
+`(, (Similarity "human" $1) (Inheritance $1 "mammal"))` is sent as `and`.
 
 ### Fetching Atoms from DAS and storing them into a local Space
 

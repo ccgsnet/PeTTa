@@ -224,6 +224,13 @@ space_missing(error(existence_error(procedure, Space/Arity), _), Term) :-
 %Match for conjunctive pattern
 match(_, LComma, OutPattern, Result) :- LComma == [','], !,
                                         Result = OutPattern.
+% A comma on a DAS space is the same query as `(and ...)`.
+match(Space, [Comma|Parts], OutPattern, Result) :-
+        Comma == ',',
+        Parts \= [],
+        petta_das_space(Space, Url), !,
+        das_comma_to_and([Comma|Parts], Pattern),
+        das_space_match(Url, Pattern, OutPattern, Result).
 match(Space, [Comma|[Head|Tail]], OutPattern, Result) :- Comma == ',', !,
                                                          ( is_list(Head) -> append([Space], Head, List), Term =.. List
                                                                           ; Term =.. [Space, '#primitive', Head] ),
@@ -237,7 +244,7 @@ match(Space, PatternVar, OutPattern, Result) :- var(PatternVar), !,
                                                 \+ cyclic_term(OutPattern),
                                                 Result = OutPattern.
 
-% Bound DAS space: query that endpoint and unify the template. Comma patterns stay local.
+% Bound DAS space: query that endpoint and unify the template.
 match(Space, Pattern, OutPattern, Result) :-
         \+ var(Pattern),
         Pattern \= [','|_],

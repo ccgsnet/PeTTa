@@ -80,11 +80,30 @@ das_endpoint_url(Endpoint, Url) :-
         das_normalize_url(Raw, Url).
 
 %% Unify each DAS answer with Pattern and return the shared template.
+%% An `or` query reports the one branch that matched, not the `(or ...)` term.
 das_space_match(Url, Pattern, OutPattern, Result) :-
         das_with_url(Url, 'das-query'(Pattern, Answer)),
-        Answer = Pattern,
+        das_unify_query_answer(Pattern, Answer),
         \+ cyclic_term(OutPattern),
         Result = OutPattern.
+
+das_unify_query_answer([or|Branches], Answer) :- !,
+        member(Branch, Branches),
+        das_unify_query_answer(Branch, Answer).
+das_unify_query_answer(Pattern, Answer) :-
+        Answer = Pattern.
+
+%% Local match writes conjunction with `,`. DAS expects `and`.
+%% Variables stay variables: a free pattern slot must not be read as a comma.
+das_comma_to_and(Term, [and|AndArgs]) :-
+        nonvar(Term),
+        Term = [','|Args], !,
+        maplist(das_comma_to_and, Args, AndArgs).
+das_comma_to_and(Term, And) :-
+        nonvar(Term),
+        is_list(Term), !,
+        maplist(das_comma_to_and, Term, And).
+das_comma_to_and(Term, Term).
 
 %% POST add_atom / delete_atom. The router answers on the query_answers stream
 %% with the new handle, or "deleted" / "not_found".
@@ -398,9 +417,11 @@ das_metta_expressions_first(Groups, Metta) :-
         Group \= [],
         (   Group = [One]
         ->  das_metta_value_string(One, Metta)
-        ;   maplist(das_metta_value_string, Group, Strs),
+        ;   % An `and` query reports one expression per conjunct, not an
+            % `(and ...)` term. Rebuild that term so match can unify it.
+            maplist(das_metta_value_string, Group, Strs),
             atomic_list_concat(Strs, ' ', Joined0),
-            format(string(Metta), "(~w)", [Joined0])
+            format(string(Metta), "(and ~w)", [Joined0])
         ),
         !.
 
