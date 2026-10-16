@@ -261,6 +261,7 @@ py_bool_norm(R, R).
                                                 py_call(builtins:Call0, R0, Opts), py_bool_norm(R0, Result) ).
 
 %%% States: %%%
+:- multifile 'bind!'/3.
 'bind!'(A, ['new-state', B], C) :- 'change-state!'(A, B, C).
 'change-state!'(Var, Value, true) :- nb_setval(Var, Value).
 'get-state'(Var, Value) :- nb_getval(Var, Value).
@@ -342,7 +343,7 @@ register_fun(N) :- assertz(fun(N)),
                           'foldl-atom', 'map-atom', 'filter-atom','current-time','format-time', library, exists_file,
                           import_prolog_function, 'Predicate', callPredicate, assertaPredicate, assertzPredicate, retractPredicate,
                           'add-translator-rule!', 'remove-translator-rule!', argv,
-                          'das-get', 'das-set', 'das-query', 'das-evolution',
+                          'das-get', 'das-set', 'das-evolution',
                           'das-query-start', 'das-evolution-start',
                           'das-collect', 'das-status', 'das-cancel']).
 :- das_register_ops.

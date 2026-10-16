@@ -6,6 +6,11 @@ add_sexp(Space, [Rel|Args]) :- Term =.. [Space, Rel | Args],
 remove_sexp(Space, [Rel|Args]) :- Term =.. [Space, Rel | Args],
                                   retractall(Term).
 
+% A DAS space has no HTTP write command.
+'add-atom'(Space, _, _) :-
+        petta_das_space(Space, _), !,
+        throw(error(das_space_readonly(Space), _)).
+
 %Add a function atom:
 'add-atom'(Space, Term, true) :- Term = [=,[FAtom|W],_], !,
                                  add_sexp(Space, Term),
@@ -22,6 +27,10 @@ remove_sexp(Space, [Rel|Args]) :- Term =.. [Space, Rel | Args],
 
 %Add an atom to the space:
 'add-atom'(Space, Term, true) :- add_sexp(Space, Term).
+
+'remove-atom'(Space, _, _) :-
+        petta_das_space(Space, _), !,
+        throw(error(das_space_readonly(Space), _)).
 
 %%Remove a function atom:
 'remove-atom'(Space, Term, Removed) :- Term = [=,[F|Args],Body], !,
@@ -59,14 +68,31 @@ match(Space, PatternVar, OutPattern, Result) :- var(PatternVar), !,
                                                 \+ cyclic_term(OutPattern),
                                                 Result = OutPattern.
 
+% Bound DAS space: query that endpoint and unify the template. Comma patterns stay local.
+match(Space, Pattern, OutPattern, Result) :-
+        \+ var(Pattern),
+        Pattern \= [','|_],
+        petta_das_space(Space, Url), !,
+        das_space_match(Url, Pattern, OutPattern, Result).
+
 %Match for pattern:
 match(Space, [Rel|PatArgs], OutPattern, Result) :- Term =.. [Space, Rel | PatArgs],
                                                    catch(Term, _, fail),
                                                    \+ cyclic_term(OutPattern),
                                                    Result = OutPattern.
 
+% DAS has no full-space dump.
+'get-atoms'(Space, _) :-
+        petta_das_space(Space, _), !,
+        throw(error(das_space_no_dump(Space), _)).
+
 %Get all atoms in space, irregard of arity:
 'get-atoms'(Space, Pattern) :- current_predicate(Space/Arity),
                                functor(Head, Space, Arity),
                                clause(Head, true),
                                Head =.. [Space | Pattern].
+
+petta_das_space(Space, Url) :-
+        atom(Space),
+        current_predicate(das_space/2),
+        das_space(Space, Url).

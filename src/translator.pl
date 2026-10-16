@@ -291,7 +291,7 @@ translate_expr([H0|T0], Goals, Out) :-
                                                      append(G1, [match(S, Pattern, Out, Out)], G2),
                                                      append(G2, GsB, Goals)
         %--- DAS (patterns/commands stay data; ids evaluate) ---:
-        ; ( HV == 'das-query' ; HV == 'das-evolution'
+        ; ( HV == 'das-evolution'
           ; HV == 'das-query-start' ; HV == 'das-evolution-start'
           ; HV == 'das-set' ; HV == 'das-get'
           ), T = [Pattern] ->

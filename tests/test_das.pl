@@ -3,6 +3,7 @@
 :- ensure_loaded('../src/parser.pl').
 :- ensure_loaded('../src/das_client.pl').
 :- ensure_loaded('../src/das.pl').
+:- ensure_loaded('../src/spaces.pl').
 
 :- use_module(library(http/thread_httpd)).
 :- use_module(library(http/http_dispatch)).
@@ -320,5 +321,74 @@ test(http_query_collect_answers, [setup(das_reset_params)]) :-
             once(get_dict(use_metta_as_query_tokens, Params, Flag)),
             once(( Flag == true ; Flag == @(true) ))
         )).
+
+%%%%%%%%%% DAS space binding %%%%%%%%%%
+
+test(das_endpoint_url_normalizes) :-
+        das_endpoint_url('localhost:40009', 'http://localhost:40009'),
+        das_endpoint_url('http://localhost:40009/', 'http://localhost:40009'),
+        das_endpoint_url('https://example.com:9', 'https://example.com:9'),
+        das_endpoint_url(['localhost:40009'], 'http://localhost:40009'),
+        das_endpoint_url("localhost:40009", 'http://localhost:40009').
+
+test(bind_new_das_registers_space, [cleanup(retractall(das_space('&das', _)))]) :-
+        'bind!'('&das', ['new-das!', ['localhost:40009']], true),
+        das_space('&das', 'http://localhost:40009'),
+        'bind!'('&das', ['new-das!', 'http://127.0.0.1:40009'], true),
+        das_space('&das', 'http://127.0.0.1:40009'),
+        \+ das_space('&das', 'http://localhost:40009').
+
+test(das_with_url_restores_config, [cleanup(das_clear_config)]) :-
+        das_clear_config,
+        das_set_config(das_config{
+                           base_url:'http://original',
+                           connect_timeout_ms:1,
+                           request_timeout_ms:0,
+                           collect_timeout_ms:0
+                       }),
+        das_with_url('http://other:9', das_config(C)),
+        get_dict(base_url, C, During),
+        During == 'http://other:9',
+        das_config(After),
+        get_dict(base_url, After, Restored),
+        Restored == 'http://original'.
+
+test(match_das_space_unifies_template, [
+        setup((
+            retractall(das_query_override(_, _)),
+            assertz(das_query_override(_, ['Other', a])),
+            assertz(das_query_override(_, ['Similarity', "human", "ent"])),
+            das_bind_space('&das', 'localhost:40009')
+        )),
+        cleanup((
+            retractall(das_query_override(_, _)),
+            retractall(das_space('&das', _))
+        ))
+     ]) :-
+        findall(R,
+                match('&das', ['Similarity', "human", X], ['MyResult', "human", X], R),
+                Rs),
+        Rs = [['MyResult', "human", "ent"]].
+
+test(das_space_rejects_writes_and_dump, [
+        setup(das_bind_space('&das', 'localhost:40009')),
+        cleanup(retractall(das_space('&das', _)))
+     ]) :-
+        catch('add-atom'('&das', [foo, a], _), E1, true),
+        E1 = error(das_space_readonly('&das'), _),
+        catch('remove-atom'('&das', [foo, a], _), E2, true),
+        E2 = error(das_space_readonly('&das'), _),
+        catch('get-atoms'('&das', _), E3, true),
+        E3 = error(das_space_no_dump('&das'), _),
+        catch(match('&das', Var, Var, _), E4, true),
+        E4 = error(das_space_no_dump('&das'), _).
+
+test(unbound_self_match_uses_local_facts, [
+        cleanup(( functor(H, '&self', 3), retractall(H) ))
+     ]) :-
+        \+ das_space('&self', _),
+        'add-atom'('&self', [friend, tim, tom], true),
+        match('&self', [friend, X, Y], [pair, X, Y], R),
+        R = [pair, tim, tom].
 
 :- end_tests(das).

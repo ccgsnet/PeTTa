@@ -23,7 +23,8 @@ Defaults: `use_metta_as_query_tokens` and `populate_metta_mapping` are `true`.
 | --- | --- |
 | `(das-get params)` | Dump local router params |
 | `(das-set (<key> <value>))` | Set a local param (e.g. `context`) |
-| `(das-query <pattern>)` | Pattern query; blocks until WS stream completes; multivalued answers |
+| `(bind! &das (new-das! <endpoint>))` | Bind a space to a Command Router |
+| `(match &das <pattern> <template>)` | Query that endpoint; multivalued template instances |
 | `(das-evolution <form>)` | Evolution; blocks until the WS stream completes; multivalued answers |
 | `(das-query-start <pattern>)` / `(das-evolution-start <form>)` | Admit async work; returns `execution_id` |
 | `(das-collect <id>)` | Collect WS answers for a started execution |
@@ -38,9 +39,9 @@ Example (DAS must be listening):
 
 !(das-get params)
 
-!(das-query (Similarity $V1 $V2))
-
-!(das-query (Evaluation $P (Concept "edb dce eeb bac eed")))
+!(bind! &das (new-das! (localhost:40009)))
+!(match &das (Similarity $V1 $V2) (Similarity $V1 $V2))
+!(match &das (Evaluation $P (Concept "edb dce eeb bac eed")) (Evaluation $P (Concept "edb dce eeb bac eed")))
 
 ; Evolution (string expressions keep $names for correlation slots).
 ; Scalar knobs are local das-set params: population_size, max_generations,
@@ -61,17 +62,37 @@ Example (DAS must be listening):
 PETTA_DAS_URL=http://localhost:40009 sh run.sh ./examples/das_query.metta
 ```
 
+### Binding a space to DAS
+
+`bind!` attaches a space name to a Command Router endpoint. `match` on that
+space queries the endpoint and instantiates the template. `das-evolution` and
+`das-query-start` still use `PETTA_DAS_URL`. A host:port with no scheme
+becomes `http://host:port`.
+
+```metta
+!(bind! &das (new-das! (localhost:40009)))
+!(match &das (Similarity "human" $1) (MyResult "human" $1))
+```
+
+The Command Router has no add or delete command, so `add-atom` and `remove-atom`
+on a DAS space throw `das_space_readonly`. `get-atoms` and a variable pattern
+such as `(match &das $x $x)` throw `das_space_no_dump` because DAS has no
+full-space dump. `populate_metta_mapping` must stay true; handle-only answers
+do not unify with the pattern and are skipped. Comma-conjunction patterns are
+not sent to DAS.
+
 ### Fetching Atoms from DAS and storing them into a local Space
 
 ```
-; Check that das-query works
-!(das-query (Similarity "human" $1))
+; Check that the bound space answers
+!(bind! &das (new-das! (localhost:40009)))
+!(match &das (Similarity "human" $1) (Similarity "human" $1))
 
 ; Check that there is no result yet
 !(match &self (Similarity "human" $1) (MyResult "human" $1))
 
 ; Create a help function to fetch Atoms from DAS and add them to a given Space
-(= (add-atoms-from-das $space $pattern) (map-atom (collapse (das-query $pattern)) $atom (add-atom $space $atom)))
+(= (add-atoms-from-das $space $pattern) (map-atom (collapse (match &das $pattern $pattern)) $atom (add-atom $space $atom)))
 
 ; Call the helper function
 !(add-atoms-from-das &self (Similarity "human" $1))

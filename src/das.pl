@@ -5,6 +5,9 @@
 :- ensure_loaded(das_client).
 
 :- dynamic das_param/2.
+:- dynamic das_space/2.
+%% When any clause is present, 'das-query' uses it and does not call HTTP.
+:- dynamic das_query_override/2.
 
 %%%%%%%%%% Known DAS query params (sent on POST; others stored locally only) %%%%%%%%%%
 
@@ -47,6 +50,41 @@ das_init_defaults :-
 das_reset_params :-
         retractall(das_param(_, _)),
         das_init_defaults.
+
+%%%%%%%%%% DAS-backed spaces %%%%%%%%%%
+
+%% (bind! &das (new-das! localhost:40009))
+%% (bind! &das (new-das! (localhost:40009)))
+:- multifile 'bind!'/3.
+'bind!'(Space, ['new-das!', Endpoint], true) :-
+        !,
+        das_bind_space(Space, Endpoint).
+
+das_bind_space(Space, Endpoint) :-
+        must_be(atom, Space),
+        das_endpoint_url(Endpoint, Url),
+        retractall(das_space(Space, _)),
+        assertz(das_space(Space, Url)).
+
+das_endpoint_url([Endpoint], Url) :- !,
+        das_endpoint_url(Endpoint, Url).
+das_endpoint_url(Endpoint, Url) :-
+        (   string(Endpoint) -> atom_string(Endpoint, E)
+        ;   atom(Endpoint) -> E = Endpoint
+        ;   throw(error(das_bad_endpoint(Endpoint), _))
+        ),
+        (   ( sub_atom(E, 0, 7, _, 'http://') ; sub_atom(E, 0, 8, _, 'https://') )
+        ->  Raw = E
+        ;   atomic_list_concat(['http://', E], Raw)
+        ),
+        das_normalize_url(Raw, Url).
+
+%% Unify each DAS answer with Pattern and return the shared template.
+das_space_match(Url, Pattern, OutPattern, Result) :-
+        das_with_url(Url, 'das-query'(Pattern, Answer)),
+        Answer = Pattern,
+        \+ cyclic_term(OutPattern),
+        Result = OutPattern.
 
 %%%%%%%%%% Local param store %%%%%%%%%%
 
@@ -189,7 +227,12 @@ das_pair_json(Other, _) :-
         throw(error(das_bad_evolution('correlation pair must be (from to)'), Other)).
 
 %%%%%%%%%% Multivalued query / evolution %%%%%%%%%%
+%% 'das-query'/2 is internal. MeTTa queries go through match on a bound DAS space.
 
+'das-query'(Pattern, Out) :-
+        das_query_override(_, _),
+        !,
+        das_query_override(Pattern, Out).
 'das-query'(Pattern, Out) :-
         das_build_params(query, Pattern, Params),
         das_execute_and_collect(query, Params, Answers),
@@ -424,18 +467,17 @@ das_dict_get(Dict, Key, Value, Default) :-
 
 das_register_ops :-
         maplist(register_fun,
-                ['das-get', 'das-set', 'das-query', 'das-evolution',
+                ['das-get', 'das-set', 'das-evolution',
                  'das-query-start', 'das-evolution-start',
                  'das-collect', 'das-status', 'das-cancel']),
         (   arity('das-get', 2) -> true ; assertz(arity('das-get', 2)) ),
         maplist([N]>>(arity(N, 2) -> true ; assertz(arity(N, 2))),
-                ['das-set', 'das-query', 'das-evolution',
+                ['das-set', 'das-evolution',
                  'das-query-start', 'das-evolution-start',
                  'das-collect', 'das-status', 'das-cancel']),
         maplist(das_assert_type,
                 [ ['das-get', [->, 'Atom', 'Atom']],
                   ['das-set', [->, 'Atom', 'Atom']],
-                  ['das-query', [->, 'Atom', 'Atom']],
                   ['das-evolution', [->, 'Atom', 'Atom']],
                   ['das-query-start', [->, 'Atom', 'Atom']],
                   ['das-evolution-start', [->, 'Atom', 'Atom']],
